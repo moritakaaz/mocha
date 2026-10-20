@@ -20,8 +20,8 @@ SKIP_SUBTYPES = {
     "ekm_access_denied", "app_conversation_prefilter", "huddle_thread",
 }
 
-_LINK_LABELED = re.compile(r"<(https?://[^>|]+)\|([^>]+)>")
-_LINK_BARE = re.compile(r"<(https?://[^>]+)>")
+_LINK_LABELED = re.compile(r"<((?:https?://|mailto:)[^>|]+)\|([^>]+)>")
+_LINK_BARE = re.compile(r"<((?:https?://|mailto:)[^>]+)>")
 
 
 def _link_compare_key(value: str) -> str:
@@ -98,6 +98,16 @@ def convert_text(text: str, resolve_user=None,
             continue
         def _link(match: re.Match) -> str:
             url, label = match.group(1), match.group(2)
+            # Slack stores a typed email address as a mailto link
+            # ("<mailto:a@b.co|a@b.co>"). Discord has no use for the
+            # mailto: scheme in message text, so render the bare
+            # address; a differing label is kept as plain text before
+            # it, mirroring the http(s) label rule below.
+            if url.startswith("mailto:"):
+                address = url[len("mailto:"):]
+                if not label or label == address or label == url:
+                    return address
+                return f"{label} ({address})"
             # Never emit masked markdown links ([label](url)): some
             # Discord clients render them as ugly bracketed text,
             # which the owner explicitly rejected. A label that adds
@@ -114,7 +124,14 @@ def convert_text(text: str, resolve_user=None,
             return f"{label} ({url})"
 
         part = _LINK_LABELED.sub(_link, part)
-        part = _LINK_BARE.sub(r"\1", part)
+
+        def _bare_link(match: re.Match) -> str:
+            url = match.group(1)
+            if url.startswith("mailto:"):
+                return url[len("mailto:"):]
+            return url
+
+        part = _LINK_BARE.sub(_bare_link, part)
 
         def _user(match: re.Match) -> str:
             user_id, label = match.group(1), match.group(2)

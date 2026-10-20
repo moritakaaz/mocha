@@ -104,6 +104,11 @@ def check_normalizer() -> None:
         "go https://github.com/thomasloupe/Slackord"
     assert convert_text("visit <https://x.test>") == \
         "visit https://x.test"
+    # Typed emails are stored by Slack as mailto links; they render
+    # as the bare address, never as raw markup.
+    assert convert_text("mail <mailto:a@b.co|a@b.co> ya") == \
+        "mail a@b.co ya"
+    assert convert_text("mail <mailto:a@b.co>") == "mail a@b.co"
     # Mentions with and without labels.
     got = convert_text("hi <@U123|ana> and <@U456>",
                        resolve_user=lambda uid: "Ana" if uid == "U123"

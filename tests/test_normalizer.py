@@ -55,6 +55,22 @@ class TestConvertText(unittest.TestCase):
         self.assertEqual(convert_text("visit <https://x.test>"),
                          "visit https://x.test")
 
+    def test_mailto_label_equal_to_address_collapses(self):
+        # Slack stores a typed email as <mailto:a@b.co|a@b.co>; the
+        # Discord text must be the bare address, not the raw markup.
+        self.assertEqual(
+            convert_text("mail <mailto:ana@x.co|ana@x.co> ya"),
+            "mail ana@x.co ya")
+
+    def test_mailto_bare(self):
+        self.assertEqual(convert_text("mail <mailto:ana@x.co> ya"),
+                         "mail ana@x.co ya")
+
+    def test_mailto_real_label_kept(self):
+        self.assertEqual(
+            convert_text("mail <mailto:ana@x.co|Ana's email> ya"),
+            "mail Ana's email (ana@x.co) ya")
+
     def test_user_mention_with_resolver(self):
         got = convert_text(
             "hi <@U123>", resolve_user=lambda uid: "Ana" if uid == "U123"
