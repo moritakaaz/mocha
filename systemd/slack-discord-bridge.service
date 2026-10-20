@@ -1,0 +1,17 @@
+[Unit]
+Description=Slack to Discord Bridge (one-way, real-time)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/slack-discord-bridge
+EnvironmentFile=/opt/slack-discord-bridge/.env
+Environment=BRIDGE_DB_PATH=/opt/slack-discord-bridge/data/bridge.db
+Environment=BRIDGE_CONFIG_PATH=/opt/slack-discord-bridge/config.yaml
+ExecStart=/opt/slack-discord-bridge/.venv/bin/python -m bot.main
+Restart=unless-stopped
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

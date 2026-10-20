@@ -1,0 +1,37 @@
+# Copy this file to "config.yaml" and adjust it to your workspace.
+# Manual mappings in this file win over same-name auto-discovery.
+
+# How the sender name is shown in Discord.
+# Allowed values: display (Slack display name), real (full real name),
+# user (Slack username). This mirrors the name-format choice Slackord
+# offers for imported messages.
+name_format: display
+
+# Automatic sender impersonation. When true, the bridge creates and
+# manages a webhook named "Slack Bridge" in each paired Discord
+# channel and posts through it, so messages carry the Slack sender's
+# name and avatar — no webhook URLs to paste or maintain. The
+# webhook URL is remembered in the bridge database; if a channel is
+# deleted and recreated, the dead webhook is detected and replaced
+# automatically. Default: false (the bot posts with the sender name
+# in bold as a prefix).
+impersonate: false
+
+# Channel mapping. "slack" is the Slack channel name (without #) or
+# channel ID. "discord" is the Discord channel name (without #) or
+# channel ID in the guild from DISCORD_GUILD_ID.
+#
+# Optional per-channel "webhook": a Discord webhook URL for that
+# Discord channel. When set, messages are posted through the webhook
+# so they carry the Slack sender's name and avatar. An explicit URL
+# always wins over the automatic "impersonate" mode for that channel.
+# Without any webhook, the bot posts with the sender name in bold as
+# a prefix.
+channels:
+  - slack: general
+    discord: general
+  - slack: ship-it
+    discord: ship-it
+  - slack: daily-standup
+    discord: daily-standup
+    # webhook: https://discord.com/api/webhooks/WEBHOOK_ID/WEBHOOK_TOKEN
