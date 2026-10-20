@@ -245,6 +245,22 @@ the Discord channel (with the Slack channel's name and topic).
 Manual entries let you rename the Discord side or pin an exact
 channel ID.
 
+**Fully automatic setup (recommended for most installs):** you do
+not have to write channel mappings at all. This complete
+`config.yaml` pairs every channel automatically — the bridge joins
+public channels, creates missing Discord channels, manages its
+webhooks, and follows Slack channel renames by itself:
+
+```yaml
+name_format: display
+impersonate: true
+channels: []
+```
+
+Use manual `channels` entries only for special cases (a different
+Discord name for one channel, or your own webhook URL). The README
+section **"Full automatic mode"** explains each line.
+
 Note: if `config.yaml` contains manual webhook URLs, treat it as a
 secret too (it is also listed in `.gitignore`).
 
@@ -420,11 +436,22 @@ instead of failing silently.
 
 ### Backup
 
-Stop the bot briefly and copy the `data/` folder — the SQLite
-database inside it holds the message archive, the Slack→Discord
-message mapping, and any auto-managed webhook URLs. A weekly copy of
-`data/bridge.db` is enough. Treat backups as sensitive: they contain
-chat content and webhook URLs.
+Use the bundled backup script — never copy the live database file
+directly (the newest data may still sit in SQLite's WAL sidecar, so
+a plain copy can miss messages or corrupt). The script takes a
+consistent snapshot while the bot keeps running, verifies it, and
+also copies `config.yaml` and `.env` next to it:
+
+```bash
+.venv/bin/python scripts/backup.py            # into backups/, keeps 14 days
+```
+
+Run it daily from cron, and keep a second copy of `backups/` **off
+the server** (for example synced with rclone to cloud storage) — a
+backup that only exists on the same disk does not survive losing
+that disk. Treat backup sets as sensitive: they contain chat
+content, tokens, and webhook URLs. Restore and migration steps are
+in the README section **"Backups, restore, and migration"**.
 
 ### Re-import from scratch
 
