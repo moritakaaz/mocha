@@ -1,4 +1,4 @@
-# SETUP — Slack to Discord Bridge
+# SETUP — Mocha
 
 The complete, click-by-click setup guide. By the end of this page
 your bridge will be running on your own machine or VPS and mirroring

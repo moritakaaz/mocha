@@ -1,5 +1,5 @@
 [Unit]
-Description=Slack to Discord Bridge (one-way, real-time)
+Description=Mocha (one-way Slack to Discord bridge, real-time)
 After=network-online.target
 Wants=network-online.target
 

@@ -1,4 +1,4 @@
-# ARCHITECTURE — Slack to Discord Bridge
+# ARCHITECTURE — Mocha
 
 This document explains how the bridge moves Slack chat to Discord
 automatically and in real time, so the owner can:

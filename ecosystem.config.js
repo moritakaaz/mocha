@@ -1,4 +1,4 @@
-// pm2 process file for the Slack to Discord Bridge.
+// pm2 process file for Mocha.
 //
 // Before starting, create the virtual environment and install the
 // dependencies (from the project root):
