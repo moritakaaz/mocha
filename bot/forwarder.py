@@ -249,12 +249,17 @@ class Forwarder:
         return (data.get("display_name") or data.get("real_name")
                 or data.get("name"))
 
-    def _resolve_channel_name(self, channel_id: str) -> str | None:
-        """Resolve a Slack channel ID to its current name via the store.
+    def _resolve_channel_mention(self, channel_id: str) -> str | None:
+        """Resolve a Slack channel ID for a mention in Discord text.
 
-        Slack clients sometimes store a channel mention as a bare
-        ``<#C123>`` with no label; without a resolver the converter
-        can only fall back to the raw ID, which is meaningless in
+        When the channel is paired with a Discord channel, returns a
+        ready-made Discord channel mention (``<#discord_id>``) so the
+        mention renders as a clickable blue channel link, like a
+        natively typed one. When the channel is known but unpaired,
+        returns its plain name (the converter prefixes ``#``). Slack
+        clients sometimes store a channel mention as a bare ``<#C123>``
+        with no label; without a resolver the converter could only
+        fall back to the raw Slack ID, which is meaningless in
         Discord. Returns None when the channel is unknown.
         """
         if not channel_id:
@@ -274,6 +279,9 @@ class Forwarder:
             data = row
         else:
             return None
+        discord_id = data.get("discord_id")
+        if discord_id:
+            return f"<#{discord_id}>"
         return data.get("name")
 
     def _convert_stored_text(self, text: str) -> str:
@@ -286,7 +294,7 @@ class Forwarder:
         """
         return convert_text(text or "",
                             resolve_user=self._resolve_user_name,
-                            resolve_channel=self._resolve_channel_name)
+                            resolve_channel=self._resolve_channel_mention)
 
     # --- queue processing ------------------------------------------------
     def process_next(self, now: float | None = None) -> bool:

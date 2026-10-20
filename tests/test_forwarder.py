@@ -195,6 +195,25 @@ class ForwarderTestCase(unittest.TestCase):
                          "**Ana:** buat #daily-standup sendiri dan "
                          "#random juga")
 
+    def test_post_renders_paired_channel_mention_as_discord_link(self):
+        # When the mentioned Slack channel is paired with a Discord
+        # channel, the mention must become a real Discord channel
+        # mention (<#id>) so it renders as a clickable blue link,
+        # exactly like a natively typed Discord mention.
+        self.store.upsert_channel("C7", "daily-standup")
+        self.store.set_channel_discord("C7", "D7", "daily-standup")
+        raw = "buat <#C7> sendiri"
+        self.store.store_message("C1", {"ts": "2.9", "user": "U100",
+                                        "text": raw})
+        self.store.enqueue(POST, "C1", "2.9",
+                           {"sender_name": "Ana", "text": raw,
+                            "files": []})
+        self.assertTrue(self.forwarder.process_next())
+        mapping = self.store.get_discord_map("C1", "2.9")
+        content = self.discord.messages[mapping["discord_message_id"]] \
+            ["content"]
+        self.assertEqual(content, "**Ana:** buat <#D7> sendiri")
+
     def test_empty_post_is_skipped_not_failed(self):
         # A Slack system notice with empty text (e.g. a huddle
         # thread picked up by backfill) can never be posted: Discord

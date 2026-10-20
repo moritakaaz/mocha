@@ -84,6 +84,14 @@ class TestConvertText(unittest.TestCase):
         self.assertEqual(convert_text("join <#C999|general>"),
                          "join #general")
 
+    def test_channel_resolver_discord_mention_passes_through(self):
+        # A resolver that returns a Discord mention (<#id>) gets it
+        # emitted verbatim, so Discord renders a clickable link.
+        got = convert_text(
+            "ke <#C7> yuk",
+            resolve_channel=lambda cid: "<#D7>" if cid == "C7" else None)
+        self.assertEqual(got, "ke <#D7> yuk")
+
     def test_special_mentions(self):
         self.assertEqual(convert_text("<!channel> <!here> <!everyone>"),
                          "@channel @here @everyone")

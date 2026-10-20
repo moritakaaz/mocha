@@ -117,6 +117,10 @@ def check_normalizer() -> None:
     # Channel mention and specials.
     assert convert_text("join <#C999|general> <!channel>") == \
         "join #general @channel"
+    # A resolver returning a Discord mention gets it verbatim.
+    assert convert_text(
+        "ke <#C7> yuk",
+        resolve_channel=lambda cid: "<#D7>") == "ke <#D7> yuk"
     # Bold and strike.
     assert convert_text("*bold* and ~gone~") == "**bold** and ~~gone~~"
     # Code is protected from conversion.

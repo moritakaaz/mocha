@@ -85,7 +85,10 @@ def convert_text(text: str, resolve_user=None,
 
     ``resolve_user(user_id)`` and ``resolve_channel(channel_id)``
     optionally return display strings used for mentions; without them
-    the label embedded in the Slack markup is used when present.
+    the label embedded in the Slack markup is used when present. A
+    channel resolver may instead return a ready-made Discord channel
+    mention (``<#123...>``), which is then emitted verbatim so the
+    mention renders as a clickable channel link in Discord.
     """
     if not text:
         return ""
@@ -144,9 +147,11 @@ def convert_text(text: str, resolve_user=None,
         def _channel(match: re.Match) -> str:
             channel_id, label = match.group(1), match.group(2)
             if resolve_channel:
-                name = resolve_channel(channel_id)
-                if name:
-                    return "#" + name
+                resolved = resolve_channel(channel_id)
+                if resolved:
+                    if resolved.startswith("<#"):
+                        return resolved
+                    return "#" + resolved
             return "#" + (label or channel_id)
 
         part = _SUBTEAM.sub(lambda m: "@" + (m.group(2) or "group"), part)
