@@ -21,6 +21,12 @@ impersonate: false
 # channel ID. "discord" is the Discord channel name (without #) or
 # channel ID in the guild from DISCORD_GUILD_ID.
 #
+# Fully automatic alternative: delete the example rules below (or
+# set "channels: []") and the bridge pairs every channel by name on
+# its own — no per-channel setup, renames included. See "Full
+# automatic mode" in README.md. The rules below are only needed to
+# pin a channel to a different Discord name or a custom webhook.
+#
 # Optional per-channel "webhook": a Discord webhook URL for that
 # Discord channel. When set, messages are posted through the webhook
 # so they carry the Slack sender's name and avatar. An explicit URL

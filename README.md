@@ -142,15 +142,50 @@ cp .env.example .env
 chmod 600 .env
 
 cp config.example.yaml config.yaml
-# Edit config.yaml to map your channels. Manual mappings win over
-# same-name auto-discovery. For sender name/avatar impersonation,
-# either set impersonate: true (the bridge manages its own webhooks)
-# or set per-channel webhook URLs manually, and pick the name_format
-# (display / real / user).
+# For most setups you do not map channels by hand at all: delete the
+# example channel rules (or set channels: []) and the bridge pairs
+# every channel automatically — see "Full automatic mode" below.
+# Manual mappings stay available for special cases and win over
+# same-name auto-discovery.
 ```
 
 Never commit `.env` or `config.yaml` if `config.yaml` contains
 webhook URLs — both are listed in `.gitignore` already.
+
+### Full automatic mode (zero channel configuration)
+
+Mocha can run with a three-line `config.yaml`:
+
+```yaml
+impersonate: true
+name_format: display
+channels: []
+```
+
+What each line does:
+
+- `impersonate: true` — messages appear in Discord with the Slack
+  sender's own name and avatar. The bridge creates and manages a
+  webhook per channel by itself; you never paste or maintain a
+  webhook URL. (Default is `false`, because this mode needs the
+  Manage Webhooks permission.)
+- `name_format: display` — which Slack name is shown for a sender:
+  `display` (display name), `real` (full real name), or `user`
+  (Slack username).
+- `channels: []` — no manual channel mappings. This is the line that
+  makes channel handling automatic.
+
+With channel handling automatic, the bridge joins public Slack
+channels by itself, creates the matching Discord channel when one is
+missing, pairs channels by name, and follows Slack channel renames —
+the Discord channel is renamed to match within a few minutes. A
+brand-new channel needs no setup at all; a private channel only
+needs a one-time `/invite` of the bot in Slack.
+
+Manual entries under `channels:` remain supported for the special
+cases: pinning a Slack channel to a differently named Discord
+channel, or supplying your own webhook URL for a single channel. A
+manual mapping always wins over auto-discovery for that channel.
 
 ## Deploy with Docker Compose (recommended)
 
