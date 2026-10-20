@@ -3,15 +3,15 @@
 A standalone bot that mirrors Slack channels to a Discord server
 automatically, in real time, one way (Slack → Discord). No manual
 exports, no GUI importer, and no dependency on any third-party
-automation service. Deploy it on your own VPS with Docker Compose
-(or systemd) using only Slack and Discord app tokens that you create
-and hold yourself.
+automation service. Deploy it on your own VPS with Docker Compose,
+systemd, or pm2, using only Slack and Discord app tokens that you
+create and hold yourself.
 
 **Setting up for the first time? Follow [SETUP.md](SETUP.md)** —
 the complete click-by-click walkthrough (creating the Slack app
-and the Discord bot, every token, scope, and permission, both run
-methods, and day-2 operations). The Setup steps below are the short
-version of the same path.
+and the Discord bot, every token, scope, and permission, all three
+run methods, and day-2 operations). The Setup steps below are the
+short version of the same path.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the design, data model,
 failure modes, and design decisions.
@@ -175,19 +175,44 @@ sudo systemctl enable --now slack-discord-bridge
 journalctl -u slack-discord-bridge -f
 ```
 
+## Deploy with pm2 (no Docker)
+
+Already running your other apps under pm2? The repo ships an
+`ecosystem.config.js`, so the bridge joins the same `pm2 list` and
+is monitored the same way as everything else:
+
+```bash
+npm install -g pm2   # once, if pm2 is not installed yet
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+cp .env.example .env   # then edit it and fill in the real tokens
+cp config.example.yaml config.yaml   # then edit it
+pm2 start ecosystem.config.js
+pm2 logs mocha
+```
+
+Run `pm2 startup` (and the command it prints) plus `pm2 save` so
+the bridge restarts automatically after a reboot. Full walkthrough:
+[SETUP.md, Option C — pm2](SETUP.md#option-c--pm2).
+
 ## Operations
 
-- **Logs:** `docker compose logs -f bridge`, or
-  `journalctl -u slack-discord-bridge -f` on systemd.
+- **Logs:** `docker compose logs -f bridge`,
+  `journalctl -u slack-discord-bridge -f` on systemd, or
+  `pm2 logs mocha` on pm2.
 - **Stop / start:** `docker compose down` / `docker compose up -d`,
-  or `systemctl stop|start slack-discord-bridge`.
+  `systemctl stop|start slack-discord-bridge`, or
+  `pm2 stop|start mocha`.
 - **Backup:** stop the bot briefly and copy the `data/` folder (the
   SQLite database in WAL mode). A weekly copy of `data/bridge.db` is
   enough. Treat database backups as sensitive: they contain chat
   content.
 - **Updating:** `git pull`, then `docker compose up -d --build`. On
   systemd installs, `git pull` and
-  `systemctl restart slack-discord-bridge`.
+  `systemctl restart slack-discord-bridge`. On pm2 installs,
+  `git pull`, reinstall dependencies with
+  `.venv/bin/pip install -r requirements.txt`, then
+  `pm2 restart mocha`.
 - **Token rotation:** if a token is exposed or revoked, generate a
   new one in the Slack App settings or Discord Developer Portal,
   replace it in `.env`, and restart the bot. Expect a clear startup
@@ -205,8 +230,9 @@ server, and want the bridge to re-post the full Slack history? The
 bridge remembers what it already posted in its database, so deleting
 channels alone is not enough — the Discord-side memory must be reset:
 
-1. **Stop the bridge first** (`docker compose down` or
-   `systemctl stop slack-discord-bridge`). Never reset while it is
+1. **Stop the bridge first** (`docker compose down`,
+   `systemctl stop slack-discord-bridge`, or
+   `pm2 stop mocha`). Never reset while it is
    running.
 2. Delete the Discord channels (or create the fresh server and put
    its ID in `DISCORD_GUILD_ID`). If you keep a same-name channel,
@@ -246,7 +272,7 @@ itself and cannot be re-imported (see Limitations).
 | Messages appear twice | A manual Slackord import overlapped with this bridge's backfill of the same history. Delete the duplicated Discord messages; the bridge's own dedupe prevents further copies. |
 | Some old Slack messages are missing in Discord | They are older than what the Slack free plan shows the API (about 90 days). They can no longer be fetched automatically; see Limitations. |
 | Edits are missing in Discord | A message edited before its first forward is posted with the newest text (by design); messages from before the bridge was installed have no Discord copy to edit. |
-| Queue keeps growing, items marked failed | Read `docker compose logs` for the failing item errors. Common causes: missing Discord permission, revoked token, or no paired channel. Fix the cause and restart; pending items resume automatically, failed items are not retried. |
+| Queue keeps growing, items marked failed | Read the logs for the failing item errors (`docker compose logs`, `journalctl -u slack-discord-bridge`, or `pm2 logs mocha`). Common causes: missing Discord permission, revoked token, or no paired channel. Fix the cause and restart; pending items resume automatically, failed items are not retried. |
 
 ## Limitations (honest list)
 

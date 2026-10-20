@@ -22,7 +22,11 @@ Slack and Discord dashboards.
   permission (needed to add a bot).
 - A machine to run the bot on, with **one** of these:
   - **Docker** with the Compose plugin (recommended), or
-  - **Python 3.10+** with `venv` support (for the systemd path).
+  - **Python 3.10+** with `venv` support (for the systemd and
+    terminal paths), or
+  - **Node.js** (for pm2) plus **Python 3.10+** with `venv`
+    support (for the pm2 path — handy if your other apps already
+    run under pm2 and you want everything in one `pm2 list`).
 - This repository: clone it or download the release zip and unpack
   it, then open a terminal in the project folder.
 
@@ -280,7 +284,56 @@ journalctl -u slack-discord-bridge -f
 (If you install into a different folder, adjust the paths inside
 `systemd/slack-discord-bridge.service` first.)
 
-### Option C — Just run it in a terminal (quick test)
+### Option C — pm2
+
+Pick this if your server already runs your other apps under
+[pm2](https://pm2.keymetrics.io/): the bridge then shows up in the
+same `pm2 list` as everything else, and you monitor it the same
+way. Requires Node.js (for pm2 itself) and Python 3.10+.
+
+The repo ships a ready-made pm2 process file,
+`ecosystem.config.js`, which starts the bridge from the project
+venv exactly the way the other options do. It contains no secrets —
+the bridge reads its tokens from the project's own `.env` file.
+
+```bash
+# Install pm2 once (skip if it is already installed):
+npm install -g pm2
+
+# Set the bridge up (from the project folder):
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+cp .env.example .env            # then edit it and fill in real values
+cp config.example.yaml config.yaml   # then edit it
+
+# Start it:
+pm2 start ecosystem.config.js
+
+# Check that it is up and read its logs:
+pm2 list
+pm2 logs mocha
+```
+
+Make it survive a reboot — two steps, both needed:
+
+```bash
+pm2 startup        # prints one command; run that command as shown
+pm2 save           # freeze the current app list for the next boot
+```
+
+Re-run `pm2 save` whenever you add or remove pm2 apps later, so
+the saved list stays current.
+
+Day-to-day pm2 commands for the bridge:
+
+```bash
+pm2 restart mocha   # restart (after config or token changes)
+pm2 stop mocha      # stop
+pm2 start mocha     # start again
+pm2 delete mocha    # remove from pm2 entirely
+```
+
+### Option D — Just run it in a terminal (quick test)
 
 ```bash
 python3 -m venv .venv
@@ -291,7 +344,7 @@ cp config.example.yaml config.yaml
 ```
 
 Stop with Ctrl+C. Useful for a first smoke test before setting up
-Docker or systemd.
+Docker, systemd, or pm2.
 
 ### 4.1 Verify it works
 
@@ -315,6 +368,19 @@ Docker or systemd.
 
 ## 5. Day-2 operations
 
+### Commands by runtime
+
+The same operations look slightly different depending on how you
+run the bridge:
+
+| Operation | Docker Compose | systemd | pm2 |
+|---|---|---|---|
+| Status | `docker compose ps` | `systemctl status slack-discord-bridge` | `pm2 list` |
+| Logs (follow) | `docker compose logs -f bridge` | `journalctl -u slack-discord-bridge -f` | `pm2 logs mocha` |
+| Restart | `docker compose restart bridge` | `sudo systemctl restart slack-discord-bridge` | `pm2 restart mocha` |
+| Stop | `docker compose down` | `sudo systemctl stop slack-discord-bridge` | `pm2 stop mocha` |
+| Start | `docker compose up -d` | `sudo systemctl start slack-discord-bridge` | `pm2 start mocha` |
+
 ### Updating to a new version
 
 ```bash
@@ -323,6 +389,9 @@ git pull
 docker compose up -d --build
 # systemd:
 sudo systemctl restart slack-discord-bridge
+# pm2 (also reinstall dependencies, in case they changed):
+.venv/bin/pip install -r requirements.txt
+pm2 restart mocha
 ```
 
 Your `.env`, `config.yaml`, and `data/` are untouched by an update,
@@ -342,8 +411,9 @@ If a token leaks or is revoked:
    - **Slack app token:** **Basic Information → App-Level Tokens** →
      revoke and generate a new one (scope `connections:write`).
 2. Replace the value in `.env`.
-3. Restart the bot (`docker compose restart bridge`, or
-   `sudo systemctl restart slack-discord-bridge`).
+3. Restart the bot (`docker compose restart bridge`,
+   `sudo systemctl restart slack-discord-bridge`, or
+   `pm2 restart mocha`).
 
 While a revoked token is in place the bot logs a clear startup error
 instead of failing silently.
@@ -374,6 +444,9 @@ docker compose down            # add -v is NOT needed; your data/ stays
 sudo systemctl disable --now slack-discord-bridge
 sudo rm /etc/systemd/system/slack-discord-bridge.service
 sudo systemctl daemon-reload
+# pm2:
+pm2 delete mocha
+pm2 save                       # so it stays gone after a reboot
 ```
 
 Then delete the project folder (including `.env` and `data/`) if you
