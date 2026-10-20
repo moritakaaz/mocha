@@ -176,6 +176,42 @@ class ForwarderTestCase(unittest.TestCase):
             "**Ana:** hi @Bob and @U999 see "
             "the doc (https://example.com)")
 
+    def test_post_resolves_bare_channel_mention(self):
+        # Slack clients can store a channel mention as a bare <#C1>
+        # with no label; the send-time conversion must resolve the
+        # channel name from the store instead of leaking the raw ID.
+        self.store.upsert_channel("C7", "daily-standup")
+        raw = "buat <#C7> sendiri dan <#C8|random> juga"
+        self.store.store_message("C1", {"ts": "2.7", "user": "U100",
+                                        "text": raw})
+        self.store.enqueue(POST, "C1", "2.7",
+                           {"sender_name": "Ana", "text": raw,
+                            "files": []})
+        self.assertTrue(self.forwarder.process_next())
+        mapping = self.store.get_discord_map("C1", "2.7")
+        content = self.discord.messages[mapping["discord_message_id"]] \
+            ["content"]
+        self.assertEqual(content,
+                         "**Ana:** buat #daily-standup sendiri dan "
+                         "#random juga")
+
+    def test_empty_post_is_skipped_not_failed(self):
+        # A Slack system notice with empty text (e.g. a huddle
+        # thread picked up by backfill) can never be posted: Discord
+        # rejects empty messages. The item must complete as skipped
+        # instead of failing and retrying forever.
+        self.store.store_message("C1", {"ts": "3.3", "user": "USLACKBOT",
+                                        "text": ""})
+        self.store.enqueue(POST, "C1", "3.3",
+                           {"sender_name": "Slackbot", "text": "",
+                            "files": []})
+        self.assertTrue(self.forwarder.process_next())
+        self.assertEqual(self.discord.messages, {})
+        row = self.store.conn.execute(
+            "SELECT status FROM forward_queue WHERE slack_ts='3.3'"
+        ).fetchone()
+        self.assertEqual(row[0], "done")
+
     def test_edit_converts_stored_slack_markup(self):
         self.store.upsert_user("U200", "bob_user",
                                display_name="Bob",

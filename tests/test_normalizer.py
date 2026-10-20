@@ -140,6 +140,11 @@ class TestBuildMessage(unittest.TestCase):
         self.assertIsNone(build_message(
             {"ts": "1.1", "subtype": "channel_join"}, "C1"))
 
+    def test_huddle_thread_dropped(self):
+        self.assertIsNone(build_message(
+            {"ts": "1.2", "subtype": "huddle_thread", "user": "USLACKBOT",
+             "text": ""}, "C1"))
+
     def test_missing_ts_dropped(self):
         self.assertIsNone(build_message({"text": "no ts"}, "C1"))
 

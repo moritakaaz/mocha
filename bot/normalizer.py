@@ -17,7 +17,7 @@ SKIP_SUBTYPES = {
     "channel_topic", "channel_purpose", "group_topic", "group_purpose",
     "channel_name", "group_name", "channel_archive", "channel_unarchive",
     "group_archive", "group_unarchive", "channel_convert_to_private",
-    "ekm_access_denied", "app_conversation_prefilter",
+    "ekm_access_denied", "app_conversation_prefilter", "huddle_thread",
 }
 
 _LINK_LABELED = re.compile(r"<(https?://[^>|]+)\|([^>]+)>")

@@ -249,6 +249,33 @@ class Forwarder:
         return (data.get("display_name") or data.get("real_name")
                 or data.get("name"))
 
+    def _resolve_channel_name(self, channel_id: str) -> str | None:
+        """Resolve a Slack channel ID to its current name via the store.
+
+        Slack clients sometimes store a channel mention as a bare
+        ``<#C123>`` with no label; without a resolver the converter
+        can only fall back to the raw ID, which is meaningless in
+        Discord. Returns None when the channel is unknown.
+        """
+        if not channel_id:
+            return None
+        get_channel = getattr(self.store, "get_channel", None)
+        if get_channel is None:
+            return None
+        try:
+            row = get_channel(channel_id)
+        except Exception:  # noqa: BLE001 - resolution is best-effort
+            return None
+        if row is None:
+            return None
+        if hasattr(row, "keys"):
+            data = dict(row)
+        elif isinstance(row, dict):
+            data = row
+        else:
+            return None
+        return data.get("name")
+
     def _convert_stored_text(self, text: str) -> str:
         """Convert raw Slack text from the archive to Discord markdown.
 
@@ -258,7 +285,8 @@ class Forwarder:
         one that gets converted.
         """
         return convert_text(text or "",
-                            resolve_user=self._resolve_user_name)
+                            resolve_user=self._resolve_user_name,
+                            resolve_channel=self._resolve_channel_name)
 
     # --- queue processing ------------------------------------------------
     def process_next(self, now: float | None = None) -> bool:
@@ -366,6 +394,16 @@ class Forwarder:
         text = raw_text
         if notes:
             text = (text + "\n" if text else "") + "\n".join(notes)
+
+        if not text.strip() and not attachments:
+            # Nothing Discord could display — for example a Slack
+            # system notice with empty text (a huddle thread) that
+            # arrived via backfill. Discord rejects empty messages,
+            # so complete the item as skipped instead of failing and
+            # retrying it forever.
+            log.info("Skipping empty post %s/%s (no text, no files)",
+                     item["channel_id"], item["slack_ts"])
+            return
 
         # Thread replies go into the parent's Discord thread.
         target_channel = channel_id
