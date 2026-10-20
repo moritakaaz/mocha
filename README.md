@@ -304,6 +304,53 @@ re-imported is bounded by what Slack still returns — on the free
 plan roughly the last 90 days; anything older is gone from Slack
 itself and cannot be re-imported (see Limitations).
 
+### Backups, restore, and migration
+
+Everything that makes an installation *yours* lives in three files:
+`data/bridge.db` (the archive, channel pairings, message mapping,
+webhook URLs, and the queue), `config.yaml`, and `.env`. The code
+itself never needs a backup — it is cloned from version control.
+
+Take a backup with the bundled script (safe while the bridge runs;
+it uses SQLite's online-backup API and verifies the snapshot before
+reporting success):
+
+```bash
+.venv/bin/python scripts/backup.py            # into backups/, keeps 14 days
+.venv/bin/python scripts/backup.py --keep-days 30
+```
+
+Run it daily from cron, for example:
+
+```cron
+17 3 * * * cd /path/to/mocha && .venv/bin/python scripts/backup.py >> backups/backup.log 2>&1
+```
+
+Keep a second copy of `backups/` **off the server** (object storage,
+another machine, a sync tool such as rclone to cloud storage) — a
+backup that only exists on the same disk does not survive losing
+that disk. Note that a backup set contains your tokens (the `.env`
+copy) and webhook URLs: store it like a password file.
+
+**Restore on the same machine** (database damaged or rolled back):
+stop the bridge, replace `data/bridge.db` with the snapshot's
+`bridge-*.db` file (and `config.yaml` / `.env` if needed), start the
+bridge. Pairings and webhooks come back with the database; anything
+posted to Slack while the bridge was down is picked up by the
+startup backfill.
+
+**Migrate to a new machine:** install the runtime (Docker, or
+Python + your process manager), clone the repository, create the
+virtual environment and install requirements, copy `.env`,
+`config.yaml`, and the snapshot into `data/bridge.db`, then start
+the bridge with your process manager. No Slack App or Discord bot
+changes are needed — the tokens and IDs travel with the files, and
+the bridge only makes outbound connections, so no DNS, ports, or
+webhooks need to be reconfigured. Without a database snapshot the
+bridge still rebuilds itself from Slack history, but the archive is
+then limited to what Slack still returns (about 90 days on the free
+plan).
+
 ## Troubleshooting
 
 | Symptom | What to check |
