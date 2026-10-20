@@ -130,6 +130,11 @@ class DiscordClient:
             "POST", f"/guilds/{guild_id}/channels",
             json={"name": name, "type": 0, "topic": topic or ""})
 
+    def rename_channel(self, channel_id: str, name: str) -> dict:
+        """Rename a channel (mirrors a Slack channel rename)."""
+        return self._request(
+            "PATCH", f"/channels/{channel_id}", json={"name": name})
+
     # --- webhook management (automatic impersonation) -------------------
     def list_channel_webhooks(self, channel_id: str) -> list[dict]:
         """List the webhooks already present in a channel."""

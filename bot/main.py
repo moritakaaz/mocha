@@ -27,6 +27,7 @@ import signal
 import sqlite3
 import sys
 import threading
+import time
 from datetime import datetime, timezone
 
 log = logging.getLogger("bridge")
@@ -193,11 +194,12 @@ def main(argv: list[str] | None = None) -> int:
     from .store import Store
     from .discord_client import DiscordClient
     from .forwarder import Forwarder, make_slack_downloader
-    from .slack_listener import Bridge
+    from .slack_listener import RENAME_SYNC_INTERVAL, Bridge
 
     store = Store(cfg.db_path)
     discord = DiscordClient(cfg.discord_bot_token)
     bridge = Bridge(None, store, cfg)
+    bridge.discord = discord  # the channel rename sync needs Discord
     forwarder = Forwarder(store, discord, cfg,
                           download_file=make_slack_downloader(
                               cfg.slack_bot_token))
@@ -222,12 +224,20 @@ def main(argv: list[str] | None = None) -> int:
     worker_thread.start()
 
     log.info("Bridge is running. Press Ctrl+C to stop.")
+    last_rename_sync = time.monotonic()
     while not stop.wait(5):
         counts = store.queue_counts()
         log.debug("Queue state: %s", counts)
         if counts["failed"]:
             log.warning("%d queue item(s) failed; check the logs",
                         counts["failed"])
+        if time.monotonic() - last_rename_sync >= RENAME_SYNC_INTERVAL:
+            last_rename_sync = time.monotonic()
+            # Mirror any Slack channel renames onto Discord. Runs in
+            # its own thread so a slow API call can never stall this
+            # loop; the sync itself never raises.
+            threading.Thread(target=bridge.sync_channel_names,
+                             daemon=True).start()
     try:
         client.close()
     except Exception:  # noqa: BLE001

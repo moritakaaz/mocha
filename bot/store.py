@@ -174,6 +174,12 @@ class Store:
                 "SELECT * FROM channels WHERE id=?", (channel_id,)
             ).fetchone()
 
+    def list_channels(self) -> list:
+        """Return every known channel row (rename sync, diagnostics)."""
+        with self._lock:
+            return self.conn.execute(
+                "SELECT * FROM channels").fetchall()
+
     def get_channel_webhook(self, channel_id: str) -> str | None:
         """Return the auto-managed webhook URL stored for a channel."""
         with self._lock:

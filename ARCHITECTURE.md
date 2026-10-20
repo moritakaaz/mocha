@@ -124,6 +124,25 @@ Three main paths:
   scope or invite the bot manually") and never crashes startup.
   Private channels are excluded by design: Slack only admits a bot
   to a private channel when a member invites it.
+- **Channel rename sync:** Slack is the source of truth for channel
+  names, but the bridge deliberately relies on no rename event (the
+  Slack app needs no extra subscription for this). Instead the
+  listener compares the workspace channel list with the `channels`
+  table once at startup — before the backfill's name refresh, so a
+  rule keyed by the old name still matches — and then every 5
+  minutes from the main loop (`RENAME_SYNC_INTERVAL`). Detection
+  keys off the stored `discord_name`, which only the bridge ever
+  changes: when it differs from the channel's current Slack name,
+  the linked Discord channel is renamed (`PATCH /channels/{id}`)
+  and both stored names are updated. A manual rule pinning the
+  channel to a different Discord name wins — only the Slack-side
+  name is refreshed then — while a rule pinning by Discord channel
+  ID pins the channel, not its name, so renames still apply.
+  Failures are logged as warnings and retried on the next pass; a
+  pass never raises and runs off the message path. Message routing
+  is unaffected by a rename at any moment, because channel
+  resolution always prefers the stored `discord_id` link over any
+  name lookup, so a rename can never spawn a duplicate channel.
 - Every event is ACKed to Slack first, then processed, so the
   listener never blocks.
 - Reconnects automatically with backoff when the connection drops
@@ -185,9 +204,9 @@ edit/delete/thread operations find their Discord counterpart.
 
 - Talks to the **Discord REST API** with the bot token. No gateway
   connection is needed for one-way posting.
-- The bot identity can create channels in the guild, post, edit and
-  delete its own messages, create threads from a message, and upload
-  files.
+- The bot identity can create and rename channels in the guild,
+  post, edit and delete its own messages, create threads from a
+  message, and upload files.
 - Posting identity: if `config.yaml` provides a **webhook URL** for a
   channel, messages are posted through that webhook with the Slack
   sender's name and avatar (full impersonation, like Slackord).

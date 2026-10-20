@@ -60,6 +60,12 @@ name).
 - Channel mapping: manual pairs in `config.yaml`, or automatic
   same-name discovery, plus optional auto-creation of missing Discord
   channels.
+- Channel rename sync: rename a channel in Slack and the linked
+  Discord channel is renamed to match automatically. The bridge
+  compares channel names with Slack once at startup and then every
+  5 minutes, so no extra Slack event subscription is needed. A
+  manual `config.yaml` mapping that pins a channel to a different
+  Discord name always wins and is never renamed.
 - Sender identity: set `impersonate: true` in `config.yaml` and the
   bridge creates and manages a per-channel Discord webhook itself,
   so messages display the Slack sender's name and avatar (dead
@@ -291,6 +297,10 @@ itself and cannot be re-imported (see Limitations).
   Run a second container with its own `.env` and `data/` volume for a
   second pair.
 - Ordering is guaranteed inside each channel, not across channels.
+- **Channel renames are not instant.** They reach Discord on the next
+  rename sync (at startup, then every 5 minutes). Messages keep
+  flowing to the same Discord channel in the meantime, because
+  routing uses the stored channel link, not the name.
 
 ## Credits and license
 

@@ -18,6 +18,11 @@ from .normalizer import build_message
 
 log = logging.getLogger("bridge.slack")
 
+# How often the channel-metadata sync runs while the bridge is up.
+# It compares the Slack channel list with the store and mirrors
+# renames onto the linked Discord channels (see sync_channel_names).
+RENAME_SYNC_INTERVAL = 300.0  # seconds
+
 
 class Bridge:
     """Glue between Slack events, the store, and the forward queue."""
@@ -26,9 +31,14 @@ class Bridge:
         self.web = web
         self.store = store
         self.config = config
+        # Discord client, set by main() after construction. Only the
+        # channel rename sync needs it; the listener itself is
+        # Slack-facing, so it stays None in Slack-only tests.
+        self.discord = None
         self.bot_user_id: str | None = None
         self._user_cache: dict[str, dict | None] = {}
         self._channel_cache: dict[str, str] = {}
+        self._rename_sync_lock = threading.Lock()
 
     # -- identity / lookups ------------------------------------------
     def auth_check(self):
@@ -98,6 +108,145 @@ class Bridge:
             if not cursor:
                 break
         return channels
+
+    # -- channel rename sync --------------------------------------------
+    def _list_slack_channels(self) -> list[dict]:
+        """List every channel Slack reports for the workspace (paged)."""
+        channels, cursor = [], None
+        while True:
+            resp = self.web.conversations_list(
+                types="public_channel,private_channel", limit=1000,
+                cursor=cursor)
+            channels.extend(resp.get("channels", []))
+            cursor = (resp.get("response_metadata") or {}).get(
+                "next_cursor")
+            if not cursor:
+                break
+        return channels
+
+    def _pinned_discord_name(self, channel_id: str,
+                             old_name: str | None,
+                             new_name: str) -> str | None:
+        """Return the Discord name a manual rule pins this channel to.
+
+        A config rule may key the channel by ID, by its old name, or
+        by its new name; any of them counts. Returns None when no rule
+        pins the channel to a Discord *name* — a rule whose Discord
+        ref is a channel ID pins which channel is used, not what it
+        is called, so renames still apply to it.
+        """
+        for ref in (channel_id, old_name, new_name):
+            if not ref:
+                continue
+            rule = self.config.rule_for_slack(ref)
+            if rule is None or self.config.looks_like_id(rule.discord):
+                continue
+            return rule.discord.lstrip("#").strip()
+        return None
+
+    def sync_channel_names(self, discord=None) -> int:
+        """Mirror Slack channel renames onto their Discord channels.
+
+        Slack is the source of truth for channel names, but there is
+        no rename event this bridge subscribes to (detecting renames
+        this way needs no extra Slack app subscription), so the
+        workspace channel list is compared with the store: a known
+        channel whose linked Discord channel carries a different
+        name is renamed in Discord to match, and both stored names
+        are updated. A manual config rule pinning the channel to a
+        different Discord name wins — only the stored Slack-side
+        name is refreshed then.
+
+        Detection keys off the stored ``discord_name`` (which only
+        the bridge ever changes) rather than the Slack-side ``name``,
+        because the startup backfill refreshes the latter anyway.
+
+        Runs once at startup (from run_backfill_all) and then every
+        RENAME_SYNC_INTERVAL seconds from the main loop. Failures are
+        logged as warnings and retried on the next pass; a pass never
+        raises and never blocks message flow. New channels are not
+        discovered here — auto-join and backfill own discovery.
+        Returns the number of Discord channels renamed.
+        """
+        discord = discord if discord is not None else self.discord
+        if discord is None:
+            return 0
+        if not self._rename_sync_lock.acquire(blocking=False):
+            return 0  # a previous pass is still running
+        try:
+            return self._sync_channel_names(discord)
+        finally:
+            self._rename_sync_lock.release()
+
+    def _sync_channel_names(self, discord) -> int:
+        try:
+            known = {row["id"]: row
+                     for row in self.store.list_channels()}
+        except Exception:  # noqa: BLE001 - a sync must never crash us
+            log.exception("Rename sync could not read the channel "
+                          "store")
+            return 0
+        try:
+            listed = self._list_slack_channels()
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Rename sync could not list Slack channels: "
+                        "%s", exc)
+            return 0
+        renamed = 0
+        for channel in listed:
+            try:
+                if self._sync_one_channel_name(discord, known, channel):
+                    renamed += 1
+            except Exception:  # noqa: BLE001 - keep the pass going
+                log.exception("Rename sync failed for channel %s",
+                              channel.get("id"))
+        if renamed:
+            log.info("Rename sync: renamed %d Discord channel(s) to "
+                     "match Slack", renamed)
+        return renamed
+
+    def _sync_one_channel_name(self, discord, known,
+                               channel: dict) -> bool:
+        """Sync one channel's names; True when Discord was renamed."""
+        channel_id = channel.get("id")
+        new_name = channel.get("name")
+        row = known.get(channel_id) if channel_id else None
+        if row is None or not new_name:
+            return False  # unknown here; discovery is not this sync's job
+        old_name = row["name"]
+        # Always refresh the stored Slack-side metadata.
+        self.store.upsert_channel(
+            channel_id, new_name,
+            (channel.get("topic") or {}).get("value"),
+            bool(channel.get("is_private")))
+        self._channel_cache[channel_id] = new_name
+        discord_id = row["discord_id"]
+        if not discord_id:
+            return False  # not linked to a Discord channel (yet)
+        current = row["discord_name"]
+        if current and current.lower() == new_name.lower():
+            return False  # already in sync
+        pinned = self._pinned_discord_name(channel_id, old_name,
+                                           new_name)
+        if pinned and pinned.lower() != new_name.lower():
+            log.info("Slack channel #%s renamed to #%s, but config "
+                     "pins it to Discord #%s; leaving the Discord "
+                     "name alone", old_name, new_name, pinned)
+            return False
+        try:
+            discord.rename_channel(discord_id, new_name)
+        except Exception as exc:  # noqa: BLE001 - retried next pass
+            log.warning("Could not rename Discord channel %s to #%s "
+                        "(Slack channel renamed from #%s): %s; will "
+                        "retry on the next sync",
+                        discord_id, new_name, old_name, exc)
+            return False
+        self.store.set_channel_discord(channel_id, discord_id,
+                                       new_name)
+        log.info("Slack channel #%s renamed to #%s; renamed the "
+                 "linked Discord channel %s to match",
+                 old_name, new_name, discord_id)
+        return True
 
     # -- auto-join public channels --------------------------------------
     def _auto_join_enabled(self) -> bool:
@@ -297,6 +446,12 @@ class Bridge:
     def run_backfill_all(self) -> None:
         from .backfill import backfill_channel
         try:
+            # Catch channel renames made while the bridge was down.
+            # This runs before member_channels() refreshes the stored
+            # Slack-side names, so the sync can still see the old
+            # names (a manual rule may be keyed by one). The sync
+            # never raises.
+            self.sync_channel_names()
             channels = self.member_channels()
             log.info("Backfill starting: member of %d channel(s)",
                      len(channels))
