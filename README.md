@@ -1,6 +1,6 @@
-# Slack to Discord Bridge
+# Mocha
 
-A standalone bot that mirrors Slack channels to a Discord server
+Mocha is a standalone bot that mirrors Slack channels to a Discord server
 automatically, in real time, one way (Slack → Discord). No manual
 exports, no GUI importer, and no dependency on any third-party
 automation service. Deploy it on your own VPS with Docker Compose,
